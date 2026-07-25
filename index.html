@@ -906,14 +906,9 @@ function pullFromCloud(callback, forceUpdate) {
     var localCode = D.recoveryCode;
     D = Object.assign({}, DEFAULT, remote);
     // Restore credentials from local if remote doesn't have them
-    // Use cloud credentials if available, otherwise keep local
-    if(!D.adminUser && localUser) D.adminUser = localUser;
-    if(!D.adminPass && localPass) D.adminPass = localPass;
-    if(!D.recoveryCode && localCode) D.recoveryCode = localCode;
-    // Sync local NS keys from cloud
-    if(D.adminUser) setAdminUser(D.adminUser);
-    if(D.adminPass) setAdminPass(D.adminPass);
-    if(D.recoveryCode) setRecoverCode(D.recoveryCode);
+    if(localUser) D.adminUser    = localUser;
+    if(localPass) D.adminPass    = localPass;
+    if(localCode) D.recoveryCode = localCode;
     saveToLS();
     callback(true);
   })
@@ -1028,17 +1023,38 @@ function doLogin(){
   var u = (document.getElementById('loginUser').value||'').trim();
   var p = document.getElementById('loginPass').value||'';
   var err = document.getElementById('loginErr');
-  // Credentials: cloud D takes priority over local NS_u/NS_p
-  var adminU = (D && D.adminUser) ? D.adminUser : getAdminUser();
-  var adminP = (D && D.adminPass) ? D.adminPass : getAdminPass();
-  if(u===adminU && p===adminP){
-    err.style.display='none';
-    // Sync local NS keys with cloud values
-    setAdminUser(adminU); setAdminPass(adminP);
-    initAdmin(); showView('vAdmin');
+  var btn = document.getElementById('btnLogin');
+  if(btn){btn.disabled=true;btn.textContent='Verificando...';}
+
+  function check(adminU, adminP){
+    if(btn){btn.disabled=false;btn.textContent='Entrar no Painel →';}
+    if(u===adminU && p===adminP){
+      err.style.display='none';
+      initAdmin(); showView('vAdmin');
+    } else {
+      err.style.display='block';
+      err.textContent='Usuário ou senha inválidos.';
+    }
+  }
+
+  // Pull fresh from JSONBin always — ignores localStorage completely
+  if(JSONBIN_ID && JSONBIN_KEY){
+    fetch('https://api.jsonbin.io/v3/b/'+JSONBIN_ID+'/latest',{
+      headers:{'X-Master-Key':JSONBIN_KEY}
+    })
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j && j.record && j.record.adminUser){
+        D.adminUser=j.record.adminUser;
+        D.adminPass=j.record.adminPass;
+        check(j.record.adminUser, j.record.adminPass);
+      } else {
+        check(D.adminUser||'admin', D.adminPass||'1234');
+      }
+    })
+    .catch(function(){ check(D.adminUser||'admin', D.adminPass||'1234'); });
   } else {
-    err.style.display='block';
-    err.textContent = 'Usu\u00e1rio ou senha inv\u00e1lidos.';
+    check(D.adminUser||'admin', D.adminPass||'1234');
   }
 }
 
@@ -1077,8 +1093,8 @@ function doRecover(){
   var newPass=newPassEl.value.trim();
   if(newPass.length<4){ alert('Senha m\u00ednimo 4 caracteres.'); return; }
   var newUser=newUserEl.value.trim();
-  if(newUser){ D.adminUser=newUser; setAdminUser(newUser); }
-  D.adminPass=newPass; setAdminPass(newPass);
+  if(newUser) setAdminUser(newUser);
+  setAdminPass(newPass);
   ok.style.display='block';
   setTimeout(function(){
     toggleRecover();
@@ -1683,15 +1699,9 @@ function saveCreds(){
   if(!u){showMsg('passMsg','Digite um usu\u00e1rio','err');return;}
   if(p.length<4){showMsg('passMsg','M\u00ednimo 4 caracteres','err');return;}
   if(p!==pc){showMsg('passMsg','Senhas n\u00e3o conferem','err');return;}
-  // Save to D (cloud sync) AND local NS keys
-  D.adminUser=u; D.adminPass=p;
   setAdminUser(u); setAdminPass(p);
   var rc=document.getElementById('recoveryCode');
-  if(rc&&rc.value.trim()){
-    D.recoveryCode=rc.value.trim();
-    setRecoverCode(D.recoveryCode);
-    document.getElementById('currentCode').textContent=D.recoveryCode;
-  }
+  if(rc&&rc.value.trim()){ setRecoverCode(rc.value.trim()); document.getElementById('currentCode').textContent=getRecoverCode(); }
   ['newUser','newPass','newPassC'].forEach(function(id){document.getElementById(id).value='';}); 
   save(); showMsg('passMsg','\u2713 Credenciais salvas!','ok');
 }
