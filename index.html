@@ -419,9 +419,9 @@ button{font-family:Inter,sans-serif;cursor:pointer}
     <div class="recoverBox" id="recoverBox">
       <h4>Recuperar Acesso</h4>
       <p>Digite o código secreto de recuperação definido no painel admin.</p>
-      <div class="lField"><label>Código Secreto</label><input type="password" id="recoverCode" placeholder="Código de recuperação"></div>
+      <div class="lField"><label>Código Secreto</label><input type="password" id="recoverCode" placeholder="••••••••"></div>
       <div class="lField" id="recoverStep2" style="display:none"><label>Nova Senha</label><input type="password" id="recoverNewPass" placeholder="Nova senha"></div>
-      <div class="lField" id="recoverStep3" style="display:none"><label>Novo Usuário (opcional)</label><input type="text" id="recoverNewUser" placeholder="Deixe em branco para manter"></div>
+
       <button class="btnPrimary" id="btnDoRecover" style="margin-top:4px">Confirmar</button>
       <div class="recoverOk" id="recoverOk">✓ Senha redefinida! Faça login.</div>
     </div>
@@ -1075,34 +1075,52 @@ function doRecover(){
   var newPassEl=document.getElementById('recoverNewPass');
   var newUserEl=document.getElementById('recoverNewUser');
   var ok=document.getElementById('recoverOk');
+  var err=document.getElementById('loginErr');
 
   if(!code){ alert('Digite o código de recuperação.'); return; }
-  if(code!==getRecoverCode()){
-    var err=document.getElementById('loginErr');
-    err.textContent='Código de recuperação incorreto.';
-    err.style.display='block'; return;
+
+  function validateCode(correctCode){
+    if(code!==correctCode){
+      err.textContent='Código incorreto.';
+      err.style.display='block'; return;
+    }
+    err.style.display='none';
+    if(step2.style.display==='none'){
+      step2.style.display='block';
+      document.getElementById('recoverStep3').style.display='block';
+      newPassEl.focus(); return;
+    }
+    var newPass=newPassEl.value.trim();
+    if(newPass.length<4){ alert('Senha mínimo 4 caracteres.'); return; }
+    var newUser=(newUserEl?newUserEl.value.trim():'');
+    if(newUser){ D.adminUser=newUser; setAdminUser(newUser); }
+    D.adminPass=newPass; setAdminPass(newPass);
+    save();
+    ok.style.display='block';
+    setTimeout(function(){
+      toggleRecover();
+      document.getElementById('loginUser').value=D.adminUser||'admin';
+      document.getElementById('loginPass').value='';
+      document.getElementById('loginPass').focus();
+    },2000);
   }
 
-  if(step2.style.display==='none'){
-    step2.style.display='block';
-    document.getElementById('recoverStep3').style.display='block';
-    document.getElementById('loginErr').style.display='none';
-    newPassEl.focus(); return;
+  // Fetch correct code from JSONBin
+  if(JSONBIN_ID && JSONBIN_KEY){
+    fetch('https://api.jsonbin.io/v3/b/'+JSONBIN_ID+'/latest',{
+      headers:{'X-Master-Key':JSONBIN_KEY}
+    })
+    .then(function(r){return r.json();})
+    .then(function(j){
+      var correctCode=(j&&j.record&&j.record.recoveryCode)?j.record.recoveryCode:getRecoverCode();
+      validateCode(correctCode);
+    })
+    .catch(function(){ validateCode(getRecoverCode()); });
+  } else {
+    validateCode(getRecoverCode());
   }
-
-  var newPass=newPassEl.value.trim();
-  if(newPass.length<4){ alert('Senha m\u00ednimo 4 caracteres.'); return; }
-  var newUser=newUserEl.value.trim();
-  if(newUser) setAdminUser(newUser);
-  setAdminPass(newPass);
-  ok.style.display='block';
-  setTimeout(function(){
-    toggleRecover();
-    document.getElementById('loginUser').value=getAdminUser();
-    document.getElementById('loginPass').value='';
-    document.getElementById('loginPass').focus();
-  },2000);
 }
+
 
 /* ══════════════════════════════════════
    CLIENT
